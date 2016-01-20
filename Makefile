@@ -20,7 +20,7 @@ DBGOPT = -g
 # ------------------------------------------------------------------------------
 SOURCES = bckhnd.c
 
-LSOWN = msgcat 
+LSOWN = mqutil msgcat 
 
 MQINST = /opt/mqm/75a
 
