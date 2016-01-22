@@ -41,8 +41,9 @@
 // ---------------------------------------------------------
 // local
 // ---------------------------------------------------------
-#include <bckhnd.h>
 #include <cmdln.h>
+#include <bckhnd.h>
+#include <msgmng.h>
 
 /******************************************************************************/
 /*   G L O B A L S                                                            */
@@ -93,6 +94,15 @@ int backoutHandler()
                                          //
   MQHOBJ  hFwdq ;                        // queue handle   
   MQOD    dFwdq = {MQOD_DEFAULT};        // queue descriptor
+
+  // -------------------------------------------------------
+  // initialize message id list
+  // -------------------------------------------------------
+  sysRc = initMsgIdList();
+  if( sysRc != 0 )
+  {
+    goto _door ;
+  }
 
   // -------------------------------------------------------
   // connect to queue manager 
