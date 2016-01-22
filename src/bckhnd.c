@@ -21,6 +21,7 @@
 // ---------------------------------------------------------
 #include <errno.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 // ---------------------------------------------------------
 // MQ
@@ -57,11 +58,11 @@
 /*   P R O T O T Y P E S                                                      */
 /******************************************************************************/
 int moveMessages();
-int readMessage( MQHCONN _hCon    ,  // connection handle   
-                 MQHOBJ  _hGetQ   ,  // get queue handle
-		 PMQMD   _pMd     ,  // message descriptor (set to default) 
-                 PMQVOID _pBuffer ,
-                 PMQLONG _pMsgLng );
+int readMessage( MQHCONN _hCon     , // connection handle   
+                 MQHOBJ  _hGetQ    , // get queue handle
+		 PMQMD   _pMd      , // message descriptor (set to default) 
+                 PMQVOID *_pBuffer , // message length
+                 PMQLONG _pMsgLng ); // message buffer
 
 /******************************************************************************/
 /*                                                                            */
@@ -78,20 +79,17 @@ int backoutHandler()
 
   int sysRc = 0 ;
 
-  MQHCONN hCon  ;                   // connection handle   
-  char qmgrName[MQ_Q_MGR_NAME_LENGTH+1];
-                                    //
-  MQHOBJ  hBoq ;                    // queue handle   
-  MQOD    dBoq = {MQOD_DEFAULT};    // queue descriptor
-  char boqName[MQ_Q_NAME_LENGTH+1]; //
-                              //
-  MQHOBJ  hSrcq ;                    // queue handle   
-  MQOD    dSrcq = {MQOD_DEFAULT};    // queue descriptor
-  char srcqName[MQ_Q_NAME_LENGTH+1]; //
-                            //
-  MQHOBJ  hFwdq ;                    // queue handle   
-  MQOD    dFwdq = {MQOD_DEFAULT};    // queue descriptor
-  char fwdqName[MQ_Q_NAME_LENGTH+1]; //
+  MQHCONN hCon ;                         // connection handle   
+  char qmgrName[MQ_Q_MGR_NAME_LENGTH+1]; // queue manager name 
+                                         //
+  MQHOBJ  hBoq ;                         // queue handle   
+  MQOD    dBoq = {MQOD_DEFAULT};         // queue descriptor
+                                         //
+  MQHOBJ  hSrcq ;                        // queue handle   
+  MQOD    dSrcq = {MQOD_DEFAULT};        // queue descriptor
+                                         //
+  MQHOBJ  hFwdq ;                        // queue handle   
+  MQOD    dFwdq = {MQOD_DEFAULT};        // queue descriptor
 
   // -------------------------------------------------------
   // connect to queue manager 
@@ -119,11 +117,11 @@ int backoutHandler()
   // -------------------------------------------------------
   // open back out queue
   // -------------------------------------------------------
-  memset( dBoq.ObjectName, ' ', MQ_Q_NAME_LENGTH );   //
-  dBoq.ObjectName[MQ_Q_NAME_LENGTH] = '\0' ;          //
+  memset( dBoq.ObjectName, ' ', MQ_Q_NAME_LENGTH );   
+  dBoq.ObjectName[MQ_Q_NAME_LENGTH] = '\0' ;  //
   memcpy( dBoq.ObjectName   ,                 //
-          getStrAttr("backout")           ,                 //
-          strlen(getStrAttr("backout")) );                 //
+          getStrAttr("backout")           ,   //
+          strlen(getStrAttr("backout")) );    //
                                               //
   sysRc=mqOpenObject( hCon                  , // connection handle
                       &dBoq                 , // queue descriptor
@@ -140,11 +138,11 @@ int backoutHandler()
   // -------------------------------------------------------
   // open (original) source queue
   // -------------------------------------------------------
-  memset( dSrcq.ObjectName, ' ', MQ_Q_NAME_LENGTH );  //
-  dSrcq.ObjectName[MQ_Q_NAME_LENGTH] = '\0' ;          //
+  memset( dSrcq.ObjectName, ' ', MQ_Q_NAME_LENGTH ); 
+  dSrcq.ObjectName[MQ_Q_NAME_LENGTH] = '\0' ; //
   memcpy( dSrcq.ObjectName  ,                 //
-          getStrAttr("source")          ,                 //
-          strlen( getStrAttr("source") )         );                 //
+          getStrAttr("source")          ,     //
+          strlen( getStrAttr("source") ) );   //
                                               //
   sysRc=mqOpenObject( hCon                  , // connection handle
                       &dSrcq                , // queue descriptor
@@ -162,11 +160,11 @@ int backoutHandler()
   // -------------------------------------------------------
   // open forward queue
   // -------------------------------------------------------
-  memset( dFwdq.ObjectName, ' ', MQ_Q_NAME_LENGTH );  //
-  dFwdq.ObjectName[MQ_Q_NAME_LENGTH] = '\0' ;          //
+  memset( dFwdq.ObjectName, ' ', MQ_Q_NAME_LENGTH ); 
+  dFwdq.ObjectName[MQ_Q_NAME_LENGTH] = '\0' ; //
   memcpy( dFwdq.ObjectName  ,                 //
-          getStrAttr("forward")          ,                 //
-          strlen( getStrAttr("forward") )         );                 //
+          getStrAttr("forward")          ,    //
+          strlen( getStrAttr("forward") ) );  //
                                               //
   sysRc=mqOpenObject( hCon                  , // connection handle
                       &dFwdq                , // queue descriptor
@@ -184,7 +182,23 @@ int backoutHandler()
   // -------------------------------------------------------
   // move messages under sync point
   // -------------------------------------------------------
-  sysRc = moveMessages( hCon, hBoq, hSrcq, hFwdq );
+  while( 1 )
+  {
+    sysRc = moveMessages( hCon, hBoq, hSrcq, hFwdq );
+    switch( sysRc ) 
+    {
+      case MQRC_NONE: continue ;
+      case MQRC_NO_MSG_AVAILABLE:
+      {
+	sleep(1);
+        continue;
+      }
+      default:
+      {
+	goto _door;
+      }
+    }
+  }
 
   _door:
 
@@ -206,14 +220,11 @@ int moveMessages( MQHCONN _hCon    ,     // connection handle
   MQLONG reason ;
 
   MQMD  md  = {MQMD_DEFAULT} ;    // message descriptor (set to default)
-  MQGMO gmo = {MQGMO_DEFAULT};    // get message option set to default
-//MQPMO pmo = {MQPMO_DEFAULT};    // put message option set to default
                                   //
                                   //
-  static PMQVOID *buffer = NULL;  //
+  static PMQVOID buffer = NULL;   //
                                   //
-  static MQLONG msgLng     = INITIAL_MSG_SIZE ;
-  static MQLONG bufferSize = INITIAL_MSG_SIZE; 
+  static MQLONG msgLng = INITIAL_MSG_SIZE ;
 
   // -----------------------------------------------------
   // initialization of static vara with first call of this function
@@ -247,116 +258,22 @@ int moveMessages( MQHCONN _hCon    ,     // connection handle
   // -----------------------------------------------------
   // read the message
   // -----------------------------------------------------
-  sysRc = readMessage( _hCon    ,  // connection handle   
-                      _hGetQ   ,  // get queue handle
-		      &md     ,  // message descriptor (set to default) 
-                      buffer ,  // ???? ACHTUNG u.U. muss zeiger auf buffer verwendet werden
-                      &msgLng );
-#if(0)
-  memcpy( &md.MsgId         ,               // flash message id, 
-          MQMI_NONE         ,               // 
-          sizeof(md.MsgId) );               // 
-  md.Version = MQMD_VERSION_2;              //
+  sysRc = readMessage( _hCon   ,            // connection handle   
+                       _hGetQ  ,            // get queue handle
+                       &md     ,            // message descriptor 
+                       &buffer ,            // message buffer
+                      &msgLng );            // message length
                                             //
-  gmo.MatchOptions = MQMO_MATCH_MSG_ID;     // 
-  gmo.Options      = MQGMO_CONVERT    +     //
-                     MQGMO_SYNCPOINT  ,     //
-                     MQGMO_WAIT       ;     //
-  gmo.Version      = MQGMO_VERSION_3  ;     //
-                                            //
-  reason = mqGet( _hCon    ,                // connection handle
-                  _hGetQ   ,                // pointer to queue handle
-                  buffer   ,                // message buffer
-                  &msgLng  ,                // buffer length
-                  &md      ,                // message descriptor
-                  gmo      ,                // get message option
-                  60000   );                // wait interval in milliseconds
-                                            // (makes 1Minute)
-  switch( reason )                          //
-  {                                         //
-    // ---------------------------------------------------
-    // read was OK
-    // ---------------------------------------------------
-    case MQRC_NONE :                        //
-    {                                       //
-      break;                                //
-    }                                       //
-                                            //
-    // ---------------------------------------------------
-    // no message found -> OK
-    // ---------------------------------------------------
-    case MQRC_NO_MSG_AVAILABLE :            // no message available, necessary 
-    {                                       //  for catching signals
-      break;                                //
-    }                                       //
-                                            //
-    // ---------------------------------------------------
-    // an error occurred preventing later commit
-    // ---------------------------------------------------
-    case MQRC_BACKED_OUT:                   //
-    {                                       //
-      sysRc = reason;                       //
-      reason = mqRollback( _hCon );         // roll back 
-      if( reason != MQRC_NONE )             //
-      {                                     //
-        sysRc = reason;                     //
-      }                                     //
-      goto _door;                           //
-    }                                       //
-                                            //
-    // ---------------------------------------------------
-    // message buffer to small for the (physical) message 
-    //   - rollback
-    //   - resize buffer
-    //   - re-read message
-    // ---------------------------------------------------
-    case MQRC_TRUNCATED_MSG_FAILED :        // 
-    {                                       //
-      logMQCall( WAR, "MQGET", reason );    //
-                                            //
-      sysRc = reason;                       //
-      if( reason != MQRC_NONE )             //
-      {                                     //
-        sysRc = reason;                     //
-        goto _door;                         //
-      }                                     //
-                                            //
-      // -------------------------------------------------
-      // resize buffer
-      // -----------------------------------// increase the new size to
-      bufferSize=((int)(msgLng/1024)+1)*1024;   // next full kB, 
-      buffer=resizeMqMessageBuffer(buffer     , // f.e. 4500Byte to 5k
-                                  &bufferSize );// reallocating the buffer
-      if( !buffer )                         //
-      {                                     //
-        sysRc = errno ;                     //
-        if( sysRc == 0 ) sysRc = 1 ;        //
-        goto _door;                         //
-      }                                     //
-                                            //
-      // -------------------------------------------------
-      // read the message with new buffer size
-      // -------------------------------------------------
-      reason = mqGet( _hCon      ,          // connection handle
-                      _hGetQ     ,          // pointer to queue handle
-                      buffer     ,          // message buffer
-                      &msgLng    ,          // buffer length
-                      &md        ,          // message descriptor
-                      gmo        ,          // get message option
-                      5000      );          // wait interval in milliseconds
-                                            //
-      switch( reason )                      //
-      {                                     //
-        case MQRC_NONE: break;              //
-        default:                            //
-        {                                   //
-	  sysRc = reason;                   //
-          goto _door;                       //
-        }                                   //
-      }                                     //
-    }                                       //
-  }                                         //
-#endif
+  switch( sysRc )                  //
+  {                                          //
+    case MQRC_NONE : break;              //
+    default        : goto _door;            //
+  }                              //
+ 
+
+
+  
+
   _door:
 
   logFuncExit( );
@@ -364,12 +281,12 @@ int moveMessages( MQHCONN _hCon    ,     // connection handle
 }
 
 /******************************************************************************/
-/*  read message            */
+/*  read message                  */
 /******************************************************************************/
 int readMessage( MQHCONN _hCon    ,  // connection handle   
                  MQHOBJ  _hGetQ   ,  // get queue handle
 		 PMQMD   _pMd     ,  // message descriptor (set to default) 
-                 PMQVOID _pBuffer ,
+                 PMQVOID *_pBuffer ,
                  PMQLONG _pMsgLng )
 {
   logFuncCall() ;               
@@ -397,8 +314,8 @@ int readMessage( MQHCONN _hCon    ,  // connection handle
                                             //
   reason = mqGet( _hCon    ,                // connection handle
                   _hGetQ   ,                // pointer to queue handle
-                  _pBuffer ,                // message buffer
-                  _pMsgLng ,                // buffer length
+                  *_pBuffer ,                // message buffer
+                  _pMsgLng,                // buffer length
                   _pMd     ,                // message descriptor
                   gmo      ,                // get message option
                   60000   );                // wait interval in milliseconds
@@ -438,9 +355,8 @@ int readMessage( MQHCONN _hCon    ,  // connection handle
     // ---------------------------------------------------
     case MQRC_TRUNCATED_MSG_FAILED :        // 
     {                                       //
-      logMQCall( WAR, "MQGET", reason );    //
-                                            //
-      sysRc = reason;                       //
+      reason = mqRollback( _hCon );         // roll back 
+
       if( reason != MQRC_NONE )             //
       {                                     //
         sysRc = reason;                     //
@@ -450,8 +366,8 @@ int readMessage( MQHCONN _hCon    ,  // connection handle
       // -------------------------------------------------
       // resize buffer
       // -----------------------------------// increase the new size to
-      newMsgLng=((int)((*_pMsgLng)/1024)+1)*1024;// next full kB, 
-      _pBuffer=resizeMqMessageBuffer(_pBuffer ,// f.e. 4500Byte to 5k
+      *_pMsgLng=((int)((*_pMsgLng)/1024)+1)*1024;// next full kB, 
+      *_pBuffer=resizeMqMessageBuffer(*_pBuffer ,// f.e. 4500Byte to 5k
                                   &newMsgLng );// reallocating the buffer
       if( !_pBuffer )                         //
       {                                     //
@@ -465,7 +381,7 @@ int readMessage( MQHCONN _hCon    ,  // connection handle
       // -------------------------------------------------
       reason=mqGet( _hCon    ,              // connection handle
                     _hGetQ   ,              // pointer to queue handle
-                    _pBuffer ,              // message buffer
+                    *_pBuffer ,              // message buffer
                     _pMsgLng ,              // buffer length
                     _pMd     ,              // message descriptor
                     gmo      ,              // get message option
@@ -480,6 +396,7 @@ int readMessage( MQHCONN _hCon    ,  // connection handle
           goto _door;                       //
         }                                   //
       }                                     //
+      break;                                //
     }                                       //
                                             //
     // ---------------------------------------------------

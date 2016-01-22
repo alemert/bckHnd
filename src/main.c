@@ -12,6 +12,7 @@
 // ---------------------------------------------------------
 // system
 // ---------------------------------------------------------
+#include <stdlib.h>
 
 // ---------------------------------------------------------
 // MQ
@@ -59,7 +60,7 @@ int main(int argc, const char* argv[] )
 
 
   int logLevel = DEFAULT_LOG_LEVEL ;   // ERR 
-  //  logLevel = CRI ;
+      logLevel = WAR ;
 
   sysRc = initLogging( DEFAULT_LOG_DIR"/"DEFAULT_LOG_FILE, logLevel );
   if( sysRc != 0 )
@@ -77,7 +78,9 @@ int main(int argc, const char* argv[] )
 _door :
 
   logger(LSTD_PRG_STOP,"bckhnd");
-  return sysRc ;
+
+  if( sysRc == 0 ) exit(0);
+  exit(1);
 }
 
 #endif
