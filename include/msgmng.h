@@ -18,7 +18,7 @@
 /******************************************************************************/
 #define MSG_ID_NOT_FOUND 0
 #define MSG_ID_FOUND     1
-#define MSG_ID_OVER_LIST_BUFFER 2 ;
+#define MSG_ID_OVER_LIST_BUFFER 2 
 
 /******************************************************************************/
 /*   T Y P E S                                                                */

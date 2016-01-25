@@ -53,6 +53,8 @@
 /*   D E F I N E S                                                            */
 /******************************************************************************/
 #define INITIAL_MSG_SIZE 4096
+#define DEFAULT_EXPIRY_TIME 3600
+#define MIN_EXPIRY_TIME     600
 
 /******************************************************************************/
 /*   M A C R O S                                                              */
@@ -231,6 +233,8 @@ int moveMessages( MQHCONN _hCon    ,     // connection handle
 
   int sysRc = 0 ;
   MQLONG reason ;
+  int    found  ;
+  int    expiry = getIntAttr("expiry") ;
 
   MQMD  md  = {MQMD_DEFAULT} ;    // message descriptor (set to default)
                                   //
@@ -238,6 +242,15 @@ int moveMessages( MQHCONN _hCon    ,     // connection handle
   static PMQVOID buffer = NULL;   //
                                   //
   static MQLONG msgLng = INITIAL_MSG_SIZE ;
+
+  if( expiry == INT_MAX || expiry == INT_MIN )
+  {
+    expiry = DEFAULT_EXPIRY_TIME ;
+  }
+  if( expiry < MIN_EXPIRY_TIME )
+  {
+    expiry = MIN_EXPIRY_TIME ;
+  }
 
   // -----------------------------------------------------
   // initialization of static vara with first call of this function
@@ -271,20 +284,46 @@ int moveMessages( MQHCONN _hCon    ,     // connection handle
   // -----------------------------------------------------
   // read the message
   // -----------------------------------------------------
-  sysRc = readMessage( _hCon   ,            // connection handle   
-                       _hGetQ  ,            // get queue handle
-                       &md     ,            // message descriptor 
-                       &buffer ,            // message buffer
-                      &msgLng );            // message length
+  sysRc = readMessage( _hCon    ,           // connection handle   
+                       _hGetQ   ,           // get queue handle
+                       &md      ,           // message descriptor 
+                       &buffer  ,           // message buffer
+                       &msgLng );           // message length
                                             //
-  switch( sysRc )                  //
+  switch( sysRc )                        //
   {                                          //
     case MQRC_NONE : break;              //
     default        : goto _door;            //
   }                              //
  
-
-
+  found = chkMsgId( md.MsgId, expiry );
+  switch( found )
+  {
+    // -----------------------------------------------------
+    // put message back to the original queue
+    // -----------------------------------------------------
+    case MSG_ID_NOT_FOUND :
+    {
+      // put back to original queue
+      /*
+      sysRc = writeMessage( _hCon,
+                            _hPutOrg,
+                            &md,
+                            buffer,
+                            &msgLng );
+       */
+    }
+    case MSG_ID_FOUND     :
+    {
+      // put to the forward queue
+    }
+    case MSG_ID_OVER_LIST_BUFFER :
+    {
+      // put back to the original queue
+      sleep(1);
+      break ;
+    }
+  }
   
 
   _door:
@@ -417,8 +456,8 @@ int readMessage( MQHCONN _hCon    ,  // connection handle
     // ---------------------------------------------------
     default:                                //
     {                                       //
-      logMQCall(ERR,"MQGET",reason);      //
-      sysRc = reason;                //
+      logMQCall(ERR,"MQGET",reason);        //
+      sysRc = reason;                       //
       goto _backout ;                  //
     }                                  //
   }                                         //

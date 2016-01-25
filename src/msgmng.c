@@ -1,17 +1,17 @@
 /******************************************************************************/
 /*                                                                            */
 /*            H A N D L E   M Q   B A C K O U T   M E S S A G E S             */
-/*                                                      */
+/*                                                                            */
 /*                    M E S S A G E   M A N A G E M E N T                     */
-/*                                              */
+/*                                                                            */
 /*                              M S G M N G . C                               */
 /*                                                                            */
 /* -------------------------------------------------------------------------- */
 /*                                                                            */
-/*    - initMsgList                                    */
-/*    - initMsgId                                */
-/*    - chkMsgId                        */
-/*                                                */
+/*    - initMsgList                                                           */
+/*    - initMsgId                                                             */
+/*    - chkMsgId                                                              */
+/*                                                                            */
 /******************************************************************************/
 
 /******************************************************************************/
@@ -27,6 +27,7 @@
 #include <time.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 
 // ---------------------------------------------------------
 // MQ
@@ -162,6 +163,8 @@ tMsgId* initMsgId()
 /*          message list is full, message id could not be put on the list     */
 /*          message should be put back to the source (original) queue         */
 /*          and the oldest message id will be removed from the list           */
+/*          because removing the oldest message from the list should not      */
+/*          often an extra sleep should be done in the calling function       */
 /*                                                                            */
 /******************************************************************************/
 int chkMsgId( MQBYTE24 _msgId, int _expiry )
@@ -172,6 +175,8 @@ int chkMsgId( MQBYTE24 _msgId, int _expiry )
   int i;
 
   time_t ts = time(NULL);
+  time_t oldest = LLONG_MAX ;
+  int    oldestIx;
 
   // -------------------------------------------------------
   // check if message id is already in the list
@@ -205,10 +210,39 @@ int chkMsgId( MQBYTE24 _msgId, int _expiry )
                                            //  before leaving the function
   found = MSG_ID_OVER_LIST_BUFFER ;        // whole list is used, remove the 
                                            // oldest message id from the list.
-
-
+  // -------------------------------------------------------
+  // find and remove the oldest message id
+  // -------------------------------------------------------
+  oldestIx = -1 ;                          //
+  for( i=0; i<MAX_MSG_ID_LIST_LNG; i++ )   // go through complete list
+  {                                        //
+    if( _gMsgIdList[i]->ts == 0 ) continue;// ignore unused nodes in the list
+    if( _gMsgIdList[i]->ts < oldest )      // the oldest node has the lowest
+    {                                      //  time stamp.
+      oldest = _gMsgIdList[i]->ts;         //
+      oldestIx=i;                          // index of the oldest message id
+    }                                      //
+  }                                        //
+                                           //
+  if( oldestIx > -1 )                      // oldest index found, should always 
+  {                                        //  be the case since the list 
+    _gMsgIdList[oldestIx] = 0 ;            //  is full
+  }                                        //
+                                           //
   _door:
 
+  // -------------------------------------------------------
+  // clean expired message id's
+  // -------------------------------------------------------
+  for( i=0; i<MAX_MSG_ID_LIST_LNG; i++ )   // messages will be put back to the
+  {                                        // original queue, if they can be 
+    if( _gMsgIdList[i]->ts == 0 ) continue;// processed in the second loop, than
+    if( _gMsgIdList[i]->ts < (ts-_expiry) )// the message id will never be 
+    {                                      // removed from the list. So they
+      _gMsgIdList[i]->ts = 0;              // have to be removed by time out
+    }                                      //
+  }                                        //
+                                           //
   logFuncExit( );
   return found ;
 }
