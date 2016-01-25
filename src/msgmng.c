@@ -8,9 +8,10 @@
 /*                                                                            */
 /* -------------------------------------------------------------------------- */
 /*                                                                            */
-/*    - initMsgList                        */
-/*    - initMsgId                        */
-/*                                          */
+/*    - initMsgList                                    */
+/*    - initMsgId                                */
+/*    - chkMsgId                        */
+/*                                                */
 /******************************************************************************/
 
 /******************************************************************************/
@@ -37,6 +38,7 @@
 // ---------------------------------------------------------
 #include "ctl.h"
 #include "msgcat/lgstd.h"
+#include "msgmng.h"
 
 /******************************************************************************/
 /*   T Y P E S                                                                */
@@ -78,7 +80,7 @@ tMsgId* initMsgId();
 /******************************************************************************/
 
 /******************************************************************************/
-/*   initialize  message id list            */
+/*   initialize  message id list                                              */
 /******************************************************************************/
 int initMsgIdList()
 {
@@ -113,7 +115,7 @@ int initMsgIdList()
 }
 
 /******************************************************************************/
-/*   initialize  message id node      */
+/*   initialize  message id node                                              */
 /******************************************************************************/
 tMsgId* initMsgId()
 {
@@ -138,3 +140,75 @@ tMsgId* initMsgId()
   return node ;
 }
 
+/******************************************************************************/
+/*   check message id                                                         */
+/*                                                                            */
+/*    function: chkMsgId                                                      */
+/*                                                                            */
+/*    description:                                                            */
+/*      check if message with message is on the list:                         */
+/*      if not found put it on the list                                       */
+/*      if found remove it from the list                                      */
+/*      if the message can not be put on the list because the list is full,   */
+/*      just remove the oldest message from the list                          */
+/*      remove all message id's if older then _expiry                         */
+/*                                                                            */
+/*    return code:                                                            */
+/*      MSG_ID_NOT_FOUND:                                                     */ 
+/*          message id not found in the list, message id added to the list    */
+/*      MSG_ID_FOUND:                                                         */
+/*          message already exists in the list, remove message from the list  */
+/*      MSG_ID_OVER_LIST_BUFFER:                                              */
+/*          message list is full, message id could not be put on the list     */
+/*          message should be put back to the source (original) queue         */
+/*          and the oldest message id will be removed from the list           */
+/*                                                                            */
+/******************************************************************************/
+int chkMsgId( MQBYTE24 _msgId, int _expiry )
+{
+  logFuncCall() ;               
+
+  int found = MSG_ID_NOT_FOUND ;
+  int i;
+
+  time_t ts = time(NULL);
+
+  // -------------------------------------------------------
+  // check if message id is already in the list
+  // -------------------------------------------------------
+  for( i=0; i<MAX_MSG_ID_LIST_LNG; i++ )   // go through complete list
+  {                                        //
+    if( _gMsgIdList[i]->ts == 0 ) continue;// ignore unused nodes in the list
+    if( memcmp( _gMsgIdList[i]->msgId,     // compare message id
+                _msgId               ,     //
+                sizeof(MQBYTE24) ) == 0 )  //
+      {                                    //
+      _gMsgIdList[i]->ts = 0;              // mark node free for future usage 
+      found = MSG_ID_FOUND;                //   by setting the time  to zero
+      goto _door;                          // work done, return from function
+    }                                      // clean list will be done at _door
+  }                                        //  before leaving the function
+                                           //
+  // -------------------------------------------------------
+  // add message id to the list
+  // -------------------------------------------------------
+  for( i=0; i<MAX_MSG_ID_LIST_LNG; i++ )   // go through complete list
+  {                                        //
+    if( _gMsgIdList[i]->ts != 0 ) continue;// ignore used nodes in the list
+    found = MSG_ID_NOT_FOUND;              // at this stage after it some free
+    memcpy( _gMsgIdList[i]->msgId,         //  node has been found,
+            _msgId               ,         // copy message id to the list and
+            sizeof(MQBYTE24)    );         // set node used by setting the time
+    _gMsgIdList[i]->ts = ts;               //   to the system time
+    goto _door;                            // work done, return from function
+  }                                        // clean list will be done at _door
+                                           //  before leaving the function
+  found = MSG_ID_OVER_LIST_BUFFER ;        // whole list is used, remove the 
+                                           // oldest message id from the list.
+
+
+  _door:
+
+  logFuncExit( );
+  return found ;
+}
