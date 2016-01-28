@@ -1,18 +1,19 @@
 /******************************************************************************/
 /*                                                                            */
 /*            H A N D L E   M Q   B A C K O U T   M E S S A G E S             */
-/*                        */
+/*                              */
 /*                       B A C K O U T   H A N D L E R                        */
-/*                          */
+/*                              */
 /*                              B C K H N D . C                               */
 /*                                                                            */
 /* -------------------------------------------------------------------------- */
 /*                                                                            */
-/*  functions:                                              */
-/*    - backoutHandler                                */
-/*    - moveMessages                        */
-/*    - readMessage                          */
-/*                                                      */
+/*  functions:                                                  */
+/*    - backoutHandler                                    */
+/*    - moveMessages                            */
+/*    - readMessage                              */
+/*    - dumpMsg                      */
+/*                                                        */
 /******************************************************************************/
 
 /******************************************************************************/
@@ -44,6 +45,7 @@
 #include <cmdln.h>
 #include <bckhnd.h>
 #include <msgmng.h>
+#include <dirent.h>
 
 /******************************************************************************/
 /*   G L O B A L S                                                            */
@@ -71,6 +73,12 @@ int readMessage( MQHCONN _hCon        ,  // connection handle
                  PMQVOID *_pBuffer    ,  // message buffer
                  PMQLONG _pMaxMsgLng  ,  // maximal available message length
                  PMQLONG _pRealMsgLng);  // real message length
+
+void dumpMsg( const char *path,
+              MQMD md         , 
+              char *buffer    , 
+              int  realMsgLng);
+
 /******************************************************************************/
 /*                                                                            */
 /*   F U N C T I O N S                                                        */
@@ -321,43 +329,52 @@ int moveMessages( MQHCONN _hCon    ,     // connection handle
                      &pmo        ,          // Options controlling MQPUT
                      &buffer     ,          // message buffer
                      realMsgLng );          // message length (buffer length)
-      switch( sysRc )                    //
-      {                                    //
-	case MQRC_NONE:             //
-        {      //
-          sleep(1);      //
-	  mqCommit( _hCon );      //
-	  break;      //
-        }              //
+                              //
+      switch( sysRc )                       //
+      {                                     //
+	case MQRC_NONE:               //
+        {                          //
+          sleep(1);              //
+	  mqCommit( _hCon );        //
+	  break;                    //
+        }                            //
         default: goto _backout;        //
-      }                                //
-      break;                //
-    }                        //
-                            //
+      }                                    //
+      break;                        //
+    }                                  //
+                                        //
     // -----------------------------------------------------
     // put message to the forward queue  
     // -----------------------------------------------------
-    case MSG_ID_FOUND :      //
-    {                    //
+    case MSG_ID_FOUND :        //
+    {                              //
       sysRc = mqPut( _hCon       ,          // connection handle
                      _hPutFwd    ,          // original queue handle
                      &md         ,          // message descriptor
                      &pmo        ,          // Options controlling MQPUT
                      &buffer     ,          // message buffer
                      realMsgLng );          // message length (buffer length)
+                            //
       switch( sysRc )            //
-      {                                //
+      {                                     //
 	case MQRC_NONE:             //
-        {      //
+        {                                   //
+	  if( getStrAttr("dump") )          //
+	  {                //
+            dumpMsg( getStrAttr("dump"),    //
+                     md          ,      //
+                     buffer      ,      //
+                     realMsgLng );      //
+	  }                      //
 	  mqCommit( _hCon );      //
-	  break;      //
-        }
+	  break;                //
+        }                        //
         default: goto _backout;      //
-      }                //
-      break;                //
-    }                    //
-  }              //
-                              //
+      }                              //
+      break;                      //
+    }                                  //
+  }                                  //
+                                            //
   // -------------------------------------------------------
   // function exit point error or OK
   // -------------------------------------------------------
@@ -525,10 +542,10 @@ int readMessage( MQHCONN _hCon        ,  // connection handle
     {                                       //
       logMQCall(ERR,"MQGET",reason);        //
       sysRc = reason;                       //
-      goto _backout ;                  //
-    }                                  //
+      goto _backout ;                       //
+    }                                       //
   }                                         //
-                                          //
+                                            //
   // -------------------------------------------------------
   // exit point for OK and Error
   // -------------------------------------------------------
@@ -551,4 +568,184 @@ int readMessage( MQHCONN _hCon        ,  // connection handle
   logFuncExit( );
   return sysRc ;
 
+}
+
+/******************************************************************************/
+/*   dump message                                                             */
+/*                                                                            */
+/*   description:                                                             */
+/*     dump message including message description and message body in human   */
+/*     readable format to the file                                            */
+/*     the file should be written on the directory path and should have       */
+/*     message id in the name                                                 */
+/*                                                                        */
+/*   attributes:                                                    */
+/*     1. path                                                       */
+/*     2. message descriptor                              */
+/*     3. message buffer                                       */
+/*     4. message length                               */
+/*                            */
+/*    return type:                            */
+/*      void, no return code needed, if writing a file fails, no data will be */
+/*      lost since real message is still on the queue            */
+/*                                                                            */
+/******************************************************************************/
+void dumpMsg( const char *path,
+              MQMD md         , 
+              char *buffer    , 
+              int  realMsgLng )
+{
+  logFuncCall() ;               
+
+  FILE *fp ;
+
+  MQBYTE   byte ;
+  char msgId[sizeof(MQBYTE24)*2+1] ;
+  msgId[sizeof(MQBYTE24)*2] = '\0';
+
+  char fileName[MAXNAMLEN];
+
+  int i;
+
+  for(i=0;i<24;i++)
+  {
+    byte = md.MsgId[i] ;
+    sprintf( &msgId[i*2],"%.2x",(int)md.MsgId[i]);
+    printf("0x%2.2x %d %c\n",(int)byte, (int)byte, (char)byte);
+  }
+
+  snprintf(fileName,MAXNAMLEN,"%s/%s.%s.browse",path,getStrAttr("source"),msgId);
+
+  printf("%s\n",fileName);
+  fp = fopen(fileName,"w");
+  if( !fp )
+  {
+    logger(LSTD_OPEN_FILE_FAILED,fileName);
+    logger( LSTD_ERRNO_ERR, errno, strerror(errno) );
+    goto _door;
+  }
+#if(0)
+  setDumpItemStr(  F_MQCHAR4             ,
+                  "Structure identifier" ,
+                   md->StrucId           );           
+ 
+  setDumpItemStr(  F_STR                 ,
+                  "Structure version"    ,
+                  (char*) mqmdVer2str(md->Version) );
+
+  setDumpItemStr(  F_STR                ,
+                  "Report msgs options" ,
+                   (char*) mqReportOption2str(md->Report) );
+
+  setDumpItemStr(  F_STR                ,
+                   "Msg type"           ,
+                   (char*) mqMsgType2str(md->MsgType) );           
+
+  setDumpItemInt(  F_MQLONG             ,
+                  "Msg lifetime"        ,
+                   md->Expiry           );
+
+  setDumpItemStr(  F_STR                ,
+                  "Feedback code"       ,
+                  (char*) mqFeedback2str( md->Feedback) );
+
+  setDumpItemStr(  F_STR                      ,
+                  "Msg data numeric encoding" ,
+                  (char*) mqEncondig2str(md->Encoding) );
+
+  setDumpItemStr(  F_STR           ,
+                  "Msg data CCSID" ,
+                  (char*) mqCCSID2str(md->CodedCharSetId) );
+  
+  setDumpItemStr(  F_MQCHAR8             ,
+                  "Msg data Format name" ,
+                   md->Format            );            
+    
+  setDumpItemStr(  F_STR                 ,
+                  "Message priority"     ,
+                  (char*) mqPriority2str(md->Priority) );          
+      
+  setDumpItemStr(  F_STR                 ,
+                  "Message persistence"  ,
+                  (char*)mqPersistence2str(md->Persistence) );
+      
+  setDumpItemByte(  F_MQBYTE24           ,
+                   "Message identifier"  ,
+                    md->MsgId            );
+      
+  setDumpItemByte(  F_MQBYTE24              ,
+                   "Correlation identifier" ,
+                    md->CorrelId            );
+      
+  setDumpItemInt(  F_MQLONG                 ,
+                  "Backout counter"         ,
+                   md->BackoutCount         );
+    
+  setDumpItemStr(  F_MQCHAR48               ,
+                  "Name of reply queue"     ,
+                   md->ReplyToQ             );
+    
+  setDumpItemStr(  F_MQCHAR48               ,
+                  "Name of reply qmgr"      ,
+                   md->ReplyToQMgr          );
+     
+  setDumpItemStr(  F_MQCHAR12               ,
+                  "User identifier"         ,
+                   md->UserIdentifier       );
+    
+  setDumpItemByte(  F_MQBYTE32              ,
+                   "Accounting token"       ,
+                    md->AccountingToken     );
+    
+  setDumpItemStr(  F_MQCHAR32                   ,
+                  "Appl data relating identity" ,
+                   md->ApplIdentityData         );
+  
+  setDumpItemStr(  F_STR          ,
+                  "Appl Put Type" ,
+                  (char*) mqPutApplType2str(md->PutApplType) );
+
+  setDumpItemStr(  F_MQCHAR28         ,
+                  "Putting appl name" ,
+                   md->PutApplName    );       
+
+  setDumpItemStr(  F_MQCHAR8          ,
+                  "Put Date"          ,
+                   md->PutDate        );
+    
+  setDumpItemStr(  F_MQCHAR8          ,
+                  "Put time"          ,
+                   md->PutTime        );
+
+  setDumpItemStr(  F_MQCHAR4                     ,
+                  "Appl data relating to origin" ,
+                   md->ApplOriginData            );
+
+  // -------------------------------------------------------
+  // msg dscr version 2 or higher
+  // -------------------------------------------------------
+  if( md->Version < MQMD_VERSION_2 ) goto _door ;
+
+  setDumpItemByte(  F_MQBYTE24        , 
+                   "Group identifier" , 
+                    md->GroupId       );
+
+  setDumpItemInt(  F_MQLONG                       , 
+                  "SeqNr of logical msg in group" , 
+                   md->MsgSeqNumber               );
+
+  setDumpItemInt(  F_MQLONG                         , 
+                  "PhysMsg Offset from logic start" , 
+                   md->Offset                       );
+
+  setDumpItemStr(  F_STR          , 
+                  "Message flags" , 
+                   (char*) mqMsgFlag2str(md->MsgFlags) );
+
+  setDumpItemInt(  F_MQLONG                    , 
+                  "Length of original message" ,
+                   md->OriginalLength          );
+#endif
+  _door:
+  logFuncExit( );
 }
