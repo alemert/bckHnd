@@ -38,6 +38,7 @@
 #include <ctl.h>
 #include <msgcat/lgstd.h>
 #include <mqbase.h>
+#include <mqtype.h>
 
 // ---------------------------------------------------------
 // local
@@ -58,6 +59,20 @@
 #define DEFAULT_EXPIRY_TIME 3600
 #define MIN_EXPIRY_TIME     600
 
+#define MAX_OUTPUT_STR_LNG  512
+
+#define F_KEY       "%-30.30s"    // dump format for key
+#define F_STR       F_KEY"%-25.47s\n"    // dump format for general string
+#define F_MQCHAR4   F_KEY"%-1.4s\n"      // dump format for MQCHAR4
+#define F_MQCHAR8   F_KEY"%-8.47s\n"     // dump format for MQCHAR8
+#define F_MQCHAR12  F_KEY"%-12.47s\n"     // dump format for MQCHAR12
+#define F_MQCHAR28  F_KEY"%-28.47s\n"    // dump format for MQCHAR28
+#define F_MQCHAR32  F_KEY"%-32.47s\n"    // dump format for MQCHAR32
+#define F_MQCHAR48  F_KEY"%-48.48s\n"    // dump format for MQCHAR48
+#define F_MQLONG    F_KEY"%.10d\n"       // dump format for MQLONG
+#define F_MQBYTE24  F_KEY"0x %-48.48s\n"
+#define F_MQBYTE32  F_KEY"0x %-64.64s\n"  // length of hex string
+
 /******************************************************************************/
 /*   M A C R O S                                                              */
 /******************************************************************************/
@@ -76,7 +91,7 @@ int readMessage( MQHCONN _hCon        ,  // connection handle
 
 void dumpMsg( const char *path,
               MQMD md         , 
-              char *buffer    , 
+              PMQVOID buffer  , 
               int  realMsgLng);
 
 /******************************************************************************/
@@ -327,7 +342,7 @@ int moveMessages( MQHCONN _hCon    ,     // connection handle
                      _hPutOrg    ,          // original queue handle
                      &md         ,          // message descriptor
                      &pmo        ,          // Options controlling MQPUT
-                     &buffer     ,          // message buffer
+                     buffer     ,          // message buffer
                      realMsgLng );          // message length (buffer length)
                               //
       switch( sysRc )                       //
@@ -352,7 +367,7 @@ int moveMessages( MQHCONN _hCon    ,     // connection handle
                      _hPutFwd    ,          // original queue handle
                      &md         ,          // message descriptor
                      &pmo        ,          // Options controlling MQPUT
-                     &buffer     ,          // message buffer
+                     buffer     ,          // message buffer
                      realMsgLng );          // message length (buffer length)
                             //
       switch( sysRc )            //
@@ -592,29 +607,40 @@ int readMessage( MQHCONN _hCon        ,  // connection handle
 /******************************************************************************/
 void dumpMsg( const char *path,
               MQMD md         , 
-              char *buffer    , 
+              PMQVOID buffer    , 
               int  realMsgLng )
 {
   logFuncCall() ;               
 
   FILE *fp ;
 
-  MQBYTE   byte ;
   char msgId[sizeof(MQBYTE24)*2+1] ;
   msgId[sizeof(MQBYTE24)*2] = '\0';
 
+  char corId[sizeof(MQBYTE24)*2+1] ;
+  corId[sizeof(MQBYTE24)*2] = '\0';
+
+  char acToken[sizeof(MQBYTE32)*2+1] ;
+  acToken[sizeof(MQBYTE32)*2] = '\0';
+
+  char grpId[sizeof(MQBYTE24)*2+1] ;
+  grpId[sizeof(MQBYTE24)*2] = '\0';
+
   char fileName[MAXNAMLEN];
+  char outStr[MAX_OUTPUT_STR_LNG];
+
+  int outStrLng ;
 
   int i;
 
-  for(i=0;i<24;i++)
-  {
-    byte = md.MsgId[i] ;
-    sprintf( &msgId[i*2],"%.2x",(int)md.MsgId[i]);
-    printf("0x%2.2x %d %c\n",(int)byte, (int)byte, (char)byte);
-  }
+  for(i=0;i<24;i++) { sprintf(&msgId[i*2],"%.2x",(int)md.MsgId[i]); }
+  for(i=0;i<24;i++) { sprintf(&corId[i*2],"%.2x",(int)md.CorrelId[i]); }
+  for(i=0;i<24;i++) { sprintf(&grpId[i*2],"%.2x",(int)md.GroupId[i]); }
+  for(i=0;i<32;i++) { sprintf(&acToken[i*2],"%.2x",(int)md.AccountingToken[i]);}
 
-  snprintf(fileName,MAXNAMLEN,"%s/%s.%s.browse",path,getStrAttr("source"),msgId);
+  snprintf( fileName, MAXNAMLEN, "%s/%s.%s.browse", path,
+                                 getStrAttr("source")   ,
+                                 msgId                  );
 
   printf("%s\n",fileName);
   fp = fopen(fileName,"w");
@@ -624,128 +650,56 @@ void dumpMsg( const char *path,
     logger( LSTD_ERRNO_ERR, errno, strerror(errno) );
     goto _door;
   }
-#if(0)
-  setDumpItemStr(  F_MQCHAR4             ,
-                  "Structure identifier" ,
-                   md->StrucId           );           
- 
-  setDumpItemStr(  F_STR                 ,
-                  "Structure version"    ,
-                  (char*) mqmdVer2str(md->Version) );
 
-  setDumpItemStr(  F_STR                ,
-                  "Report msgs options" ,
-                   (char*) mqReportOption2str(md->Report) );
-
-  setDumpItemStr(  F_STR                ,
-                   "Msg type"           ,
-                   (char*) mqMsgType2str(md->MsgType) );           
-
-  setDumpItemInt(  F_MQLONG             ,
-                  "Msg lifetime"        ,
-                   md->Expiry           );
-
-  setDumpItemStr(  F_STR                ,
-                  "Feedback code"       ,
-                  (char*) mqFeedback2str( md->Feedback) );
-
-  setDumpItemStr(  F_STR                      ,
-                  "Msg data numeric encoding" ,
-                  (char*) mqEncondig2str(md->Encoding) );
-
-  setDumpItemStr(  F_STR           ,
-                  "Msg data CCSID" ,
-                  (char*) mqCCSID2str(md->CodedCharSetId) );
-  
-  setDumpItemStr(  F_MQCHAR8             ,
-                  "Msg data Format name" ,
-                   md->Format            );            
-    
-  setDumpItemStr(  F_STR                 ,
-                  "Message priority"     ,
-                  (char*) mqPriority2str(md->Priority) );          
-      
-  setDumpItemStr(  F_STR                 ,
-                  "Message persistence"  ,
-                  (char*)mqPersistence2str(md->Persistence) );
-      
-  setDumpItemByte(  F_MQBYTE24           ,
-                   "Message identifier"  ,
-                    md->MsgId            );
-      
-  setDumpItemByte(  F_MQBYTE24              ,
-                   "Correlation identifier" ,
-                    md->CorrelId            );
-      
-  setDumpItemInt(  F_MQLONG                 ,
-                  "Backout counter"         ,
-                   md->BackoutCount         );
-    
-  setDumpItemStr(  F_MQCHAR48               ,
-                  "Name of reply queue"     ,
-                   md->ReplyToQ             );
-    
-  setDumpItemStr(  F_MQCHAR48               ,
-                  "Name of reply qmgr"      ,
-                   md->ReplyToQMgr          );
-     
-  setDumpItemStr(  F_MQCHAR12               ,
-                  "User identifier"         ,
-                   md->UserIdentifier       );
-    
-  setDumpItemByte(  F_MQBYTE32              ,
-                   "Accounting token"       ,
-                    md->AccountingToken     );
-    
-  setDumpItemStr(  F_MQCHAR32                   ,
-                  "Appl data relating identity" ,
-                   md->ApplIdentityData         );
-  
-  setDumpItemStr(  F_STR          ,
-                  "Appl Put Type" ,
-                  (char*) mqPutApplType2str(md->PutApplType) );
-
-  setDumpItemStr(  F_MQCHAR28         ,
-                  "Putting appl name" ,
-                   md->PutApplName    );       
-
-  setDumpItemStr(  F_MQCHAR8          ,
-                  "Put Date"          ,
-                   md->PutDate        );
-    
-  setDumpItemStr(  F_MQCHAR8          ,
-                  "Put time"          ,
-                   md->PutTime        );
-
-  setDumpItemStr(  F_MQCHAR4                     ,
-                  "Appl data relating to origin" ,
-                   md->ApplOriginData            );
+  fprintf(fp,F_MQCHAR4,"Structure identifier",md.StrucId );           
+  fprintf(fp,F_STR,"Structure version"  ,(char*)mqmdVer2str(md.Version));
+  fprintf(fp,F_STR,"Report message options",(char*)mqReportOption2str(md.Report));
+  fprintf(fp,F_STR,"Message type"       ,(char*)mqMsgType2str(md.MsgType));  
+  fprintf(fp,F_MQLONG,"Message lifetime",md.Expiry );
+  fprintf(fp,F_STR,"Feedback code"      ,(char*)mqFeedback2str( md.Feedback));
+  fprintf(fp,F_STR,"Numeric encoding"   ,(char*) mqEncondig2str(md.Encoding));
+  fprintf(fp,F_STR,"Message data CCSID" ,(char*)mqCCSID2str(md.CodedCharSetId));
+  fprintf(fp,F_MQCHAR8,"Message data Format name",md.Format);            
+  fprintf(fp,F_STR,"Message priority",(char*)mqPriority2str(md.Priority));
+  fprintf(fp,F_STR,"Message persistence",
+                   (char*)mqPersistence2str(md.Persistence));
+  fprintf(fp,F_MQBYTE24,"Message identifier",msgId);
+  fprintf(fp,F_MQBYTE24,"Correlation identifier",corId);
+  fprintf(fp,F_MQLONG,"Backout counter",md.BackoutCount);
+  fprintf(fp,F_MQCHAR48,"Name of reply queue",md.ReplyToQ);
+  fprintf(fp,F_MQCHAR48, "Name of reply qmgr",md.ReplyToQMgr);
+  fprintf(fp,F_MQCHAR12,"User identifier",md.UserIdentifier);
+  fprintf(fp,F_MQBYTE32,"Accounting token",acToken);
+  fprintf(fp,F_MQCHAR32,"Appl data relating identity",md.ApplIdentityData);
+  fprintf(fp,F_STR,"Appl Put Type",(char*)mqPutApplType2str(md.PutApplType));
+  fprintf(fp,F_MQCHAR28,"Putting appl name",md.PutApplName);       
+  fprintf(fp,F_MQCHAR8,"Put Date",md.PutDate  );
+  fprintf(fp,F_MQCHAR8,"Put time",md.PutTime   );
+  fprintf(fp,F_MQCHAR4,"Appl data relating to origin",md.ApplOriginData);
 
   // -------------------------------------------------------
   // msg dscr version 2 or higher
   // -------------------------------------------------------
-  if( md->Version < MQMD_VERSION_2 ) goto _door ;
+  if( md.Version < MQMD_VERSION_2 ) goto _message ;
+  fprintf(fp,F_MQBYTE24,"Group identifier",grpId);
+  fprintf(fp,F_MQLONG,"Logical SeqNr in group",md.MsgSeqNumber);
+  fprintf(fp,F_MQLONG,"Physical offset from logic start", md.Offset);
+  fprintf(fp,F_STR, "Message flags",(char*)mqMsgFlag2str(md.MsgFlags));
+  fprintf(fp,F_MQLONG,"Length of original message",md.OriginalLength);
 
-  setDumpItemByte(  F_MQBYTE24        , 
-                   "Group identifier" , 
-                    md->GroupId       );
+  _message:
 
-  setDumpItemInt(  F_MQLONG                       , 
-                  "SeqNr of logical msg in group" , 
-                   md->MsgSeqNumber               );
+  outStrLng = MAX_OUTPUT_STR_LNG ;
+  if( realMsgLng < MAX_OUTPUT_STR_LNG ) outStrLng = realMsgLng ;
+  snprintf( outStr, outStrLng+1,"%s", (char*)buffer);
+  outStr[outStrLng] = '\0';
 
-  setDumpItemInt(  F_MQLONG                         , 
-                  "PhysMsg Offset from logic start" , 
-                   md->Offset                       );
-
-  setDumpItemStr(  F_STR          , 
-                  "Message flags" , 
-                   (char*) mqMsgFlag2str(md->MsgFlags) );
-
-  setDumpItemInt(  F_MQLONG                    , 
-                  "Length of original message" ,
-                   md->OriginalLength          );
-#endif
+  fprintf(fp,"-------- message body --------\n");
+  fprintf(fp,"%s\n",outStr);
+  if( realMsgLng > 512 ) 
+    fprintf(fp," %d bytes truncated",(realMsgLng-512));
   _door:
+
+  if(fp) { fclose(fp); } 
   logFuncExit( );
 }
