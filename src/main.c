@@ -61,7 +61,7 @@ int main(int argc, const char* argv[] )
 
   int logLevel = DEFAULT_LOG_LEVEL ;   // ERR 
   //  logLevel = DBG ;
-      logLevel = FLW ;
+      logLevel = INF ;
 
   sysRc = initLogging( DEFAULT_LOG_DIR"/"DEFAULT_LOG_FILE, logLevel );
   if( sysRc != 0 )

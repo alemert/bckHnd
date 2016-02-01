@@ -155,7 +155,7 @@ tMsgId* initMsgId()
 /*      remove all message id's if older then _expiry                         */
 /*                                                                            */
 /*    return code:                                                            */
-/*      MSG_ID_NOT_FOUND:                                                     */ 
+/*      MSG_ID_NOT_FOUND:                                                     */
 /*          message id not found in the list, message id added to the list    */
 /*      MSG_ID_FOUND:                                                         */
 /*          message already exists in the list, remove message from the list  */
