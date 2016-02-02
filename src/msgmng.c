@@ -226,7 +226,7 @@ int chkMsgId( MQBYTE24 _msgId, int _expiry )
                                            //
   if( oldestIx > -1 )                      // oldest index found, should always 
   {                                        //  be the case since the list 
-    _gMsgIdList[oldestIx] = 0 ;            //  is full
+    _gMsgIdList[oldestIx]->ts = 0 ;        //  is full
   }                                        //
                                            //
   _door:

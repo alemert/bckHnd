@@ -593,16 +593,16 @@ int readMessage( MQHCONN _hCon        ,  // connection handle
 /*     readable format to the file                                            */
 /*     the file should be written on the directory path and should have       */
 /*     message id in the name                                                 */
-/*                                                                        */
+/*                                                                            */
 /*   attributes:                                                    */
 /*     1. path                                                       */
 /*     2. message descriptor                              */
 /*     3. message buffer                                       */
 /*     4. message length                               */
-/*                            */
-/*    return type:                            */
+/*                                          */
+/*    return type:                                    */
 /*      void, no return code needed, if writing a file fails, no data will be */
-/*      lost since real message is still on the queue            */
+/*      lost since real message is still on the queue                  */
 /*                                                                            */
 /******************************************************************************/
 void dumpMsg( const char *path,
