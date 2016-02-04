@@ -41,3 +41,4 @@
 /******************************************************************************/
 int initMsgIdList();
 int chkMsgId( MQBYTE24 _msgId, int _expiry );
+PMQBYTE24 findOldestMessage();

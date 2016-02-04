@@ -89,6 +89,13 @@ int readMessage( MQHCONN _hCon        ,  // connection handle
                  PMQLONG _pMaxMsgLng  ,  // maximal available message length
                  PMQLONG _pRealMsgLng);  // real message length
 
+int readOldestMessage(MQHCONN _hCon        , // connection handle   
+                      MQHOBJ  _hGetQ       , // get queue handle
+                      PMQMD   _pMd         , // message descriptor 
+                      PMQVOID *_pBuffer    , // message buffer
+                      PMQLONG _pMaxMsgLng  , // maximal available message length
+                      PMQLONG _pRealMsgLng); // real message length
+
 void dumpMsg( const char *path,
               MQMD md         , 
               PMQVOID buffer  , 
@@ -330,65 +337,107 @@ int moveMessages( MQHCONN _hCon    ,     // connection handle
                 MQPMO_SET_ALL_CONTEXT   +   // for keeping old time / date
                 MQPMO_SYNCPOINT         ;   //
                                             //
-  switch( found )                //
+  switch( found )                           //
   {                                         //
     // -----------------------------------------------------
     // put message back to the original queue
     // -----------------------------------------------------
-    case MSG_ID_OVER_LIST_BUFFER :          //
     case MSG_ID_NOT_FOUND :                 //
     {                                       //
       sysRc = mqPut( _hCon       ,          // connection handle
                      _hPutOrg    ,          // original queue handle
                      &md         ,          // message descriptor
                      &pmo        ,          // Options controlling MQPUT
-                     buffer     ,          // message buffer
+                     buffer      ,          // message buffer
                      realMsgLng );          // message length (buffer length)
-                              //
+                                            //
       switch( sysRc )                       //
       {                                     //
-	case MQRC_NONE:               //
-        {                          //
-          sleep(1);              //
-	  mqCommit( _hCon );        //
-	  break;                    //
-        }                            //
-        default: goto _backout;        //
-      }                                    //
-      break;                        //
-    }                                  //
-                                        //
+	case MQRC_NONE:                     //
+        {                                   //
+          sleep(1);                         //
+	  mqCommit( _hCon );                //
+	  break;                            //
+        }                                   //
+        default: goto _backout;             //
+      }                                     //
+      break;                                //
+    }                                       //
+                                            //
+    case MSG_ID_OVER_LIST_BUFFER :          //
+    {                                       //
+      sysRc = mqPut( _hCon       ,          // connection handle
+                     _hPutOrg    ,          // original queue handle
+                     &md         ,          // message descriptor
+                     &pmo        ,          // Options controlling MQPUT
+                     buffer      ,          // message buffer
+                     realMsgLng );          // message length (buffer length)
+                                            //
+      switch( sysRc )                       //
+      {                                     //
+	case MQRC_NONE:                     //
+        {                                   //
+	  mqCommit( _hCon );                //
+	  break;                            //
+        }                                   //
+        default: goto _backout;             //
+      }                                     //
+                                            //
+      sysRc = mqBegin( _hCon );             //
+      switch( sysRc )                       //
+      {                                     //
+	case MQRC_NONE: break;              //
+	case MQRC_NO_EXTERNAL_PARTICIPANTS: break;
+        default: goto _backout;             //
+      }                                     //
+                                            //
+      sysRc=readOldestMessage(_hCon       , // connection handle   
+                              _hGetQ      , // get queue handle
+                              &md         , // message descriptor 
+                              &buffer     , // message buffer
+                              &maxMsgLng  , // message buffer length
+                              &realMsgLng); // real message length
+                                            //
+      switch( sysRc )                       //
+      {                                     //
+	case MQRC_NONE: break;              //
+        case MQRC_NO_MSG_AVAILABLE:         // no message found, nothing to put
+	default:                            //
+          goto _door;                       //
+      }                                     //
+    }                                       // no break, put to forward queue
+                                            // has to be done
     // -----------------------------------------------------
     // put message to the forward queue  
     // -----------------------------------------------------
-    case MSG_ID_FOUND :        //
-    {                              //
+    case MSG_ID_FOUND:                      //
+    {                                       //
       sysRc = mqPut( _hCon       ,          // connection handle
                      _hPutFwd    ,          // original queue handle
                      &md         ,          // message descriptor
                      &pmo        ,          // Options controlling MQPUT
-                     buffer     ,          // message buffer
+                     buffer     ,           // message buffer
                      realMsgLng );          // message length (buffer length)
-                            //
-      switch( sysRc )            //
+                                            //
+      switch( sysRc )                       //
       {                                     //
-	case MQRC_NONE:             //
+	case MQRC_NONE:                     //
         {                                   //
 	  if( getStrAttr("dump") )          //
-	  {                //
+	  {                                 //
             dumpMsg( getStrAttr("dump"),    //
-                     md          ,      //
-                     buffer      ,      //
-                     realMsgLng );      //
-	  }                      //
-	  mqCommit( _hCon );      //
-	  break;                //
-        }                        //
-        default: goto _backout;      //
-      }                              //
-      break;                      //
-    }                                  //
-  }                                  //
+                     md          ,          //
+                     buffer      ,          //
+                     realMsgLng );          //
+	  }                                 //
+	  mqCommit( _hCon );                //
+	  break;                            //
+        }                                   //
+        default: goto _backout;             //
+      }                                     //
+      break;                                //
+    }                                       //
+  }                                         //
                                             //
   // -------------------------------------------------------
   // function exit point error or OK
@@ -541,6 +590,187 @@ int readMessage( MQHCONN _hCon        ,  // connection handle
       switch( reason )                      //
       {                                     //
         case MQRC_NONE: break;              //
+        default:                            //
+        {                                   //
+	  sysRc = reason;                   //
+          goto _door;                       //
+        }                                   //
+      }                                     //
+      break;                                //
+    }                                       //
+                                            //
+    // ---------------------------------------------------
+    // any other error
+    // ---------------------------------------------------
+    default:                                //
+    {                                       //
+      logMQCall(ERR,"MQGET",reason);        //
+      sysRc = reason;                       //
+      goto _backout ;                       //
+    }                                       //
+  }                                         //
+                                            //
+  // -------------------------------------------------------
+  // exit point for OK and Error
+  // -------------------------------------------------------
+  _door:
+
+  logFuncExit( );
+  return sysRc ;
+
+  // -------------------------------------------------------
+  // exit point for Error with rollback
+  // -------------------------------------------------------
+  _backout:
+
+  reason = mqRollback( _hCon );         // roll back 
+  if( reason != MQRC_NONE )             //
+  {                                     //
+    sysRc = reason;                     //
+  }                                     //
+ 
+  logFuncExit( );
+  return sysRc ;
+
+}
+/******************************************************************************/
+/*  read message                                                              */
+/*                                                                            */
+/*  description:                                                              */
+/*    get a message from the queue, if available message buffer of maxMsgLng  */
+/*    is not available, resize buffer                                         */
+/*                                                                            */
+/*   attributes:                                                              */
+/*     1. _hCon       : connection handle                                     */
+/*     2. _hGetQ      : get queue handle                                      */
+/*     3. _pMd        : message descriptor, already set to MQMD_DEFAULT       */
+/*     4. *_pBuffer   : message buffer, maxMsgLng allocated                   */
+/*     5. _pMaxMsgLng : maximal available message length, can be increased    */
+/*                      in readMessage by resizeMqMessageBuffer               */
+/*     6. _pRealMsgLng: real message length, this information is needed by    */
+/*                      later put call                                        */
+/*                                                                            */
+/******************************************************************************/
+int readOldestMessage( MQHCONN _hCon       , // connection handle   
+                       MQHOBJ  _hGetQ      , // get queue handle
+                       PMQMD   _pMd        , // message descriptor 
+                       PMQVOID *_pBuffer   , // message buffer
+                       PMQLONG _pMaxMsgLng , // maximal available message length
+                       PMQLONG _pRealMsgLng) // real message length
+{
+  logFuncCall() ;               
+
+  int sysRc = 0 ;
+  MQLONG reason ;
+
+  MQGMO gmo = {MQGMO_DEFAULT};    // get message option set to default
+
+  PMQBYTE24 pMsgId = NULL;
+
+  pMsgId = findOldestMessage();
+  if( !pMsgId ) goto _backout;
+
+  // -----------------------------------------------------
+  // read the message
+  // -----------------------------------------------------
+  memcpy( _pMd->MsgId       ,               // flash message id, 
+          pMsgId            ,               // 
+          sizeof(MQBYTE24) );               // MQBYTE24  
+  _pMd->Version = MQMD_VERSION_2;           //
+                                            //
+  gmo.MatchOptions = MQMO_MATCH_MSG_ID;     // 
+  gmo.Options      = MQGMO_CONVERT    +     //
+                     MQGMO_SYNCPOINT  ,     //
+                     MQGMO_WAIT       ;     //
+  gmo.Version      = MQGMO_VERSION_3  ;     //
+                                            //
+  *_pRealMsgLng = *_pMaxMsgLng;             //
+  reason = mqGet( _hCon       ,             // connection handle
+                  _hGetQ      ,             // pointer to queue handle
+                  *_pBuffer   ,             // message buffer
+                  _pRealMsgLng,             // buffer length
+                  _pMd        ,             // message descriptor
+                  gmo         ,             // get message option
+                  60000      );             // wait interval in milliseconds
+                                            // (makes 1Minute)
+  switch( reason )                          //
+  {                                         //
+    // ---------------------------------------------------
+    // read was OK
+    // ---------------------------------------------------
+    case MQRC_NONE :                        //
+    {                                       //
+      break;                                //
+    }                                       //
+                                            //
+    // ---------------------------------------------------
+    // no message found -> OK
+    // ---------------------------------------------------
+    case MQRC_NO_MSG_AVAILABLE :            // no message available, necessary 
+    {                                       //  for catching signals
+      sysRc = reason ;                      //
+      break;                                //
+    }                                       //
+                                            //
+    // ---------------------------------------------------
+    // an error occurred preventing later commit
+    // ---------------------------------------------------
+    case MQRC_BACKED_OUT:                   //
+    {                                       //
+      sysRc = reason;                       //
+      goto _backout;                        //
+    }                                       //
+                                            //
+    // ---------------------------------------------------
+    // message buffer to small for the (physical) message 
+    //   - rollback
+    //   - resize buffer
+    //   - re-read message
+    // ---------------------------------------------------
+    case MQRC_TRUNCATED_MSG_FAILED :        // 
+    {                                       //
+      reason = mqRollback( _hCon );         // roll back 
+                                            //
+      if( reason != MQRC_NONE )             //
+      {                                     //
+        sysRc = reason;                     //
+        goto _door;                         //
+      }                                     //
+                                            //
+      // -------------------------------------------------
+      // resize buffer
+      // ---------------------------------------------- // increase the buffer 
+      *_pMaxMsgLng=((int)((*_pRealMsgLng)/1024)+1)*1024;// size to next full kB, 
+      *_pBuffer = resizeMqMessageBuffer( *_pBuffer,     // f.e. 4500Byte to 5k
+                                         _pMaxMsgLng ); // 
+      if( !_pBuffer )                       //
+      {                                     //
+        sysRc = errno ;                     //
+        if( sysRc == 0 ) sysRc = 1 ;        //
+        goto _door;                         //
+      }                                     //
+                                            //
+      // -------------------------------------------------
+      // read the message with new buffer size
+      // -------------------------------------------------
+      *_pRealMsgLng = *_pMaxMsgLng;         //
+                                            //
+      reason=mqGet( _hCon       ,           // connection handle
+                    _hGetQ      ,           // pointer to queue handle
+                    *_pBuffer   ,           // message buffer
+                    _pRealMsgLng,           // buffer length
+                    _pMd        ,           // message descriptor
+                    gmo         ,           // get message option
+                    60000      );           // wait interval in milliseconds
+                                            //
+      switch( reason )                      //
+      {                                     //
+        case MQRC_NONE: break;              //
+	case MQRC_NO_MSG_AVAILABLE :
+        {
+	  sysRc = reason;                   //
+          goto _backout;                    //
+        }
         default:                            //
         {                                   //
 	  sysRc = reason;                   //

@@ -11,6 +11,7 @@
 /*    - initMsgList                                                           */
 /*    - initMsgId                                                             */
 /*    - chkMsgId                                                              */
+/*    - findOldestMessage                  */
 /*                                                                            */
 /******************************************************************************/
 
@@ -209,10 +210,11 @@ int chkMsgId( MQBYTE24 _msgId, int _expiry )
   }                                        // clean list will be done at _door
                                            //  before leaving the function
   found = MSG_ID_OVER_LIST_BUFFER ;        // whole list is used, remove the 
-                                           // oldest message id from the list.
+  goto _door;                              // oldest message id from the list.
   // -------------------------------------------------------
   // find and remove the oldest message id
   // -------------------------------------------------------
+#if(0)
   oldestIx = -1 ;                          //
   for( i=0; i<MAX_MSG_ID_LIST_LNG; i++ )   // go through complete list
   {                                        //
@@ -229,6 +231,7 @@ int chkMsgId( MQBYTE24 _msgId, int _expiry )
     _gMsgIdList[oldestIx]->ts = 0 ;        //  is full
   }                                        //
                                            //
+#endif
   _door:
 
   // -------------------------------------------------------
@@ -245,4 +248,37 @@ int chkMsgId( MQBYTE24 _msgId, int _expiry )
                                            //
   logFuncExit( );
   return found ;
+}
+
+/******************************************************************************/
+/*  find oldest message            */
+/******************************************************************************/
+PMQBYTE24 findOldestMessage()
+{
+  logFuncCall() ;               
+
+  int oldestIx = -1 ;                          //
+  time_t oldest = LLONG_MAX ;
+
+  int i;
+
+  for( i=0; i<MAX_MSG_ID_LIST_LNG; i++ )   // go through complete list
+  {                                        //
+    if( _gMsgIdList[i]->ts == 0 ) continue;// ignore unused nodes in the list
+    if( _gMsgIdList[i]->ts < oldest )      // the oldest node has the lowest
+    {                                      //  time stamp.
+      oldest = _gMsgIdList[i]->ts;         //
+      oldestIx=i;                          // index of the oldest message id
+    }                                      //
+  }                                        //
+  
+  if( oldestIx > -1 )      //
+  {
+    _gMsgIdList[oldestIx]->ts = 0 ;        //  is full
+  //memcpy(&oldestMsgId,_gMsgIdList[oldestIx]->msgId,sizeof(MQBYTE24));
+    return &(_gMsgIdList[oldestIx]->msgId);
+  }
+
+  logFuncExit( );
+  return NULL ;
 }
