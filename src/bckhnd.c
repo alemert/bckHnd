@@ -49,6 +49,8 @@
 #include <msgmng.h>
 #include <dirent.h>
 
+#include "sighnd.h"
+
 /******************************************************************************/
 /*   G L O B A L S                                                            */
 /******************************************************************************/
@@ -526,6 +528,9 @@ int readMessage( MQHCONN _hCon        ,  // connection handle
   gmo.Version      = MQGMO_VERSION_3  ;     //
                                             //
   *_pRealMsgLng = *_pMaxMsgLng;             //
+                                            //
+  sig4mq();                                 // set signals for MQGET  
+                                            //
   reason = mqGet( _hCon       ,             // connection handle
                   _hGetQ      ,             // pointer to queue handle
                   *_pBuffer   ,             // message buffer
@@ -533,7 +538,9 @@ int readMessage( MQHCONN _hCon        ,  // connection handle
                   _pMd        ,             // message descriptor
                   gmo         ,             // get message option
                   MQGET_WAIT );             // wait interval in milliseconds
-                                            // (makes 1Minute)
+                                            // 
+  checkSigint() ;                           // check for signals, exit())
+                                            //  on SIGINT exit will be called
   switch( reason )                          //
   {                                         //
     // ---------------------------------------------------
@@ -607,6 +614,8 @@ int readMessage( MQHCONN _hCon        ,  // connection handle
       // -------------------------------------------------
       *_pRealMsgLng = *_pMaxMsgLng;         //
                                             //
+      sig4mq();                             // set signals for MQGET
+                                            //
       reason=mqGet( _hCon       ,           // connection handle
                     _hGetQ      ,           // pointer to queue handle
                     *_pBuffer   ,           // message buffer
@@ -615,6 +624,8 @@ int readMessage( MQHCONN _hCon        ,  // connection handle
                     gmo         ,           // get message option
                     MQGET_WAIT );           // wait interval in milliseconds
                                             //
+      checkSigint();                        // check for signals, exit() will
+                                            //  be called on SIGINT
       switch( reason )                      //
       {                                     //
         case MQRC_NONE: break;              //
@@ -718,6 +729,9 @@ int readOldestMessage( MQHCONN _hCon       , // connection handle
   gmo.Version      = MQGMO_VERSION_3  ;     //
                                             //
   *_pRealMsgLng = *_pMaxMsgLng;             //
+                                            //
+  sig4mq();                                 // set signals for MQGET 
+                                            //
   reason = mqGet( _hCon       ,             // connection handle
                   _hGetQ      ,             // pointer to queue handle
                   *_pBuffer   ,             // message buffer
@@ -726,6 +740,8 @@ int readOldestMessage( MQHCONN _hCon       , // connection handle
                   gmo         ,             // get message option
                   MQGET_WAIT );             // wait interval in milliseconds
                                             // (makes 0.1 sec)
+  checkSigint();                            // check for signals, exit() might
+                                            //  be called on SIGINT 
   switch( reason )                          //
   {                                         //
     // ---------------------------------------------------
@@ -788,6 +804,8 @@ int readOldestMessage( MQHCONN _hCon       , // connection handle
       // -------------------------------------------------
       *_pRealMsgLng = *_pMaxMsgLng;         //
                                             //
+      sig4mq();                             // set signals for MQGET 
+                                            //
       reason=mqGet( _hCon       ,           // connection handle
                     _hGetQ      ,           // pointer to queue handle
                     *_pBuffer   ,           // message buffer
@@ -796,14 +814,16 @@ int readOldestMessage( MQHCONN _hCon       , // connection handle
                     gmo         ,           // get message option
                     MQGET_WAIT );           // wait interval in milliseconds
                                             //
+      checkSigint();                        // check signals, exit() might be)
+                                            // called on SIGINT
       switch( reason )                      //
       {                                     //
         case MQRC_NONE: break;              //
-	case MQRC_NO_MSG_AVAILABLE :
-        {
+	case MQRC_NO_MSG_AVAILABLE :        //
+        {                                   //
 	  sysRc = reason;                   //
           goto _backout;                    //
-        }
+        }                                   //
         default:                            //
         {                                   //
 	  sysRc = reason;                   //

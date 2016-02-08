@@ -23,6 +23,7 @@
 // ---------------------------------------------------------
 #include "main.h"
 #include "bckhnd.h"
+#include "sighnd.h"
 #include <ctl.h>
 #include <msgcat/lgstd.h>
 
@@ -60,7 +61,7 @@ int main(int argc, const char* argv[] )
 
 
   int logLevel = DEFAULT_LOG_LEVEL ;   // ERR 
-      logLevel = INF ;
+      logLevel = FLW ;
 
   sysRc = initLogging( DEFAULT_LOG_DIR"/"DEFAULT_LOG_FILE, logLevel );
   if( sysRc != 0 )
@@ -68,6 +69,8 @@ int main(int argc, const char* argv[] )
     fprintf(stderr,"can not init logging");
     goto _door ;
   }
+
+  initSignal();
 
   sysRc = backoutHandler();
   if( sysRc != 0 )
