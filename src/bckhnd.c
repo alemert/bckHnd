@@ -1,19 +1,20 @@
 /******************************************************************************/
 /*                                                                            */
 /*            H A N D L E   M Q   B A C K O U T   M E S S A G E S             */
-/*                              */
+/*                                                      */
 /*                       B A C K O U T   H A N D L E R                        */
-/*                              */
+/*                                        */
 /*                              B C K H N D . C                               */
 /*                                                                            */
 /* -------------------------------------------------------------------------- */
 /*                                                                            */
-/*  functions:                                                  */
-/*    - backoutHandler                                    */
-/*    - moveMessages                            */
-/*    - readMessage                              */
-/*    - dumpMsg                      */
-/*                                                        */
+/*  functions:                                                          */
+/*    - backoutHandler                                          */
+/*    - moveMessages                                  */
+/*    - readMessage                                    */
+/*    - readOldestMessage                      */
+/*    - dumpMsg                              */
+/*                                                                          */
 /******************************************************************************/
 
 /******************************************************************************/
@@ -55,6 +56,7 @@
 /******************************************************************************/
 /*   D E F I N E S                                                            */
 /******************************************************************************/
+#define MQGET_WAIT       100
 #define INITIAL_MSG_SIZE 4096
 #define DEFAULT_EXPIRY_TIME 3600
 #define MIN_EXPIRY_TIME     600
@@ -228,22 +230,30 @@ int backoutHandler()
   // -------------------------------------------------------
   // move messages under sync point
   // -------------------------------------------------------
-  while( 1 )
-  {
-    sysRc = moveMessages( hCon, hBoq, hSrcq, hFwdq );
-    switch( sysRc ) 
-    {
-      case MQRC_NONE: continue ;
-      case MQRC_NO_MSG_AVAILABLE:
-      {
-	sleep(1);
-        continue;
-      }
-      default:
-      {
-	goto _door;
-      }
-    }
+  while( 1 )                                  //
+  {                                           //
+    sysRc = moveMessages( hCon ,              // move message back to source
+			 hBoq  ,              //  queue or forward to goal
+			 hSrcq ,              //  queue
+			 hFwdq);              //
+    switch( sysRc )                           //
+    {                                         //
+      case MQRC_NONE: continue ;              // message moved
+      case MQRC_NO_MSG_AVAILABLE:             // either no message found on the 
+      {                                       //  queue or matching message id
+	sleep(5);                             //  failed
+        continue;                             //
+      }                                       //
+      case MQRC_Q_FULL :                      // source or goal queue is full
+      {                                       // rollback the message and wait
+	sleep(60);                            // one minute and retry 1min later
+	continue ;                            //
+      }                                       //
+      default:                                //
+      {                                       //
+	goto _door;                           //
+      }                                       //
+    }                                         //
   }
 
   _door:
@@ -302,17 +312,21 @@ int moveMessages( MQHCONN _hCon    ,     // connection handle
   // -----------------------------------------------------
   // start transaction
   // -----------------------------------------------------
-  reason = mqBegin( _hCon );                // begin transaction
-  switch( reason )                          //
-  {                                         //
-    case MQRC_NONE :                        //
-    case MQRC_NO_EXTERNAL_PARTICIPANTS :    // transactions without external 
-    {                                       //  resource manager
-      sysRc = MQRC_NONE;                    //
-      break;                                //
-    }                                       //
-    default : goto _door;                   //
-  }                                         //
+  reason = mqBegin( _hCon );              // begin transaction
+  switch( reason )                        //
+  {                                       //
+    case MQRC_NONE :                      //
+    case MQRC_NO_EXTERNAL_PARTICIPANTS :  // transactions without external 
+    {                                     //  resource manager
+      sysRc = MQRC_NONE;                  //
+      break;                              //
+    }                                     //
+    default : 
+    {
+      sysRc = reason ;
+      goto _door;                 //
+    }
+  }                                       //
                                             // 
   // -----------------------------------------------------
   // read the message
@@ -355,8 +369,8 @@ int moveMessages( MQHCONN _hCon    ,     // connection handle
       {                                     //
 	case MQRC_NONE:                     //
         {                                   //
-          sleep(1);                         //
 	  mqCommit( _hCon );                //
+          usleep(500000);                   //   0.5 sec
 	  break;                            //
         }                                   //
         default: goto _backout;             //
@@ -402,6 +416,9 @@ int moveMessages( MQHCONN _hCon    ,     // connection handle
       {                                     //
 	case MQRC_NONE: break;              //
         case MQRC_NO_MSG_AVAILABLE:         // no message found, nothing to put
+	{                                   //
+          sysRc = MQRC_NONE ;               // reset return value to avoid
+	}                                   //  sleep in callee function
 	default:                            //
           goto _door;                       //
       }                                     //
@@ -515,7 +532,7 @@ int readMessage( MQHCONN _hCon        ,  // connection handle
                   _pRealMsgLng,             // buffer length
                   _pMd        ,             // message descriptor
                   gmo         ,             // get message option
-                  60000      );             // wait interval in milliseconds
+                  MQGET_WAIT );             // wait interval in milliseconds
                                             // (makes 1Minute)
   switch( reason )                          //
   {                                         //
@@ -561,6 +578,17 @@ int readMessage( MQHCONN _hCon        ,  // connection handle
         goto _door;                         //
       }                                     //
                                             //
+      reason = mqBegin( _hCon );
+      switch( reason )
+      {
+	case MQRC_NONE: break;
+	default: 
+        {
+          sysRc = reason ;
+          goto _door;
+        }
+      }
+
       // -------------------------------------------------
       // resize buffer
       // ---------------------------------------------- // increase the buffer 
@@ -585,15 +613,20 @@ int readMessage( MQHCONN _hCon        ,  // connection handle
                     _pRealMsgLng,           // buffer length
                     _pMd        ,           // message descriptor
                     gmo         ,           // get message option
-                    60000      );           // wait interval in milliseconds
+                    MQGET_WAIT );           // wait interval in milliseconds
                                             //
       switch( reason )                      //
       {                                     //
         case MQRC_NONE: break;              //
-        default:                            //
+        case MQRC_NO_MSG_AVAILABLE:         //
         {                                   //
 	  sysRc = reason;                   //
           goto _door;                       //
+        }                                   //
+        default:                            //
+        {                                   //
+	  sysRc = reason;                   //
+          goto _backout;                    //
         }                                   //
       }                                     //
       break;                                //
@@ -691,8 +724,8 @@ int readOldestMessage( MQHCONN _hCon       , // connection handle
                   _pRealMsgLng,             // buffer length
                   _pMd        ,             // message descriptor
                   gmo         ,             // get message option
-                  60000      );             // wait interval in milliseconds
-                                            // (makes 1Minute)
+                  MQGET_WAIT );             // wait interval in milliseconds
+                                            // (makes 0.1 sec)
   switch( reason )                          //
   {                                         //
     // ---------------------------------------------------
@@ -708,8 +741,8 @@ int readOldestMessage( MQHCONN _hCon       , // connection handle
     // ---------------------------------------------------
     case MQRC_NO_MSG_AVAILABLE :            // no message available, necessary 
     {                                       //  for catching signals
-      sysRc = reason ;                      //
-      break;                                //
+      sysRc = reason ;
+      goto _backout;                        //
     }                                       //
                                             //
     // ---------------------------------------------------
@@ -761,7 +794,7 @@ int readOldestMessage( MQHCONN _hCon       , // connection handle
                     _pRealMsgLng,           // buffer length
                     _pMd        ,           // message descriptor
                     gmo         ,           // get message option
-                    60000      );           // wait interval in milliseconds
+                    MQGET_WAIT );           // wait interval in milliseconds
                                             //
       switch( reason )                      //
       {                                     //

@@ -176,8 +176,8 @@ int chkMsgId( MQBYTE24 _msgId, int _expiry )
   int i;
 
   time_t ts = time(NULL);
-  time_t oldest = LLONG_MAX ;
-  int    oldestIx;
+//time_t oldest = LLONG_MAX ;
+//int    oldestIx;
 
   // -------------------------------------------------------
   // check if message id is already in the list
