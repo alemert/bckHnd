@@ -60,8 +60,8 @@ int main(int argc, const char* argv[] )
   if( sysRc != 0 ) goto _door ;
 
 
-  int logLevel = DEFAULT_LOG_LEVEL ;   // ERR 
-      logLevel = FLW ;
+  int logLevel = logStr2lev( getStrAttr("lev"));
+  if(logLevel == LNA ) logLevel = LOG ;
 
   sysRc = initLogging( DEFAULT_LOG_DIR"/"DEFAULT_LOG_FILE, logLevel );
   if( sysRc != 0 )

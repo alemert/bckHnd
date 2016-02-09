@@ -38,6 +38,8 @@
 // local
 // ---------------------------------------------------------
 #include "sighnd.h"
+#include "mqbase.h"
+#include <bckhnd.h>
 
 /******************************************************************************/
 /*   G L O B A L S                                                            */
@@ -88,10 +90,30 @@ void bye()
 {
   logFuncCall( ) ;
 
+  MQHCONN _hCon = getConHanlder();
+  MQLONG  reason ;
+
   logger(LSTD_PRG_STOP, "bckhnd") ;
+
+  reason = mqRollback(_hCon) ;
+  switch( reason )
+  {
+    case MQRC_NONE :break;
+    case MQRC_HCONN_ERROR: goto _door;
+    default   : break ;
+  }
+
+  reason = mqDisc(&_hCon) ;
+  switch( reason )
+  {
+    case MQRC_NONE :break;
+    default   : break ;
+  }
+
+  _door:
+
   stopLogging();
 
-  logFuncExit( ) ;
 }
 
 /******************************************************************************/

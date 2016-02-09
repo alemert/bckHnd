@@ -54,6 +54,7 @@
 /******************************************************************************/
 /*   G L O B A L S                                                            */
 /******************************************************************************/
+MQHCONN _ghCon ;                         // global connection handle   
 
 /******************************************************************************/
 /*   D E F I N E S                                                            */
@@ -112,7 +113,17 @@ void dumpMsg( const char *path,
 /******************************************************************************/
 
 /******************************************************************************/
-/*  back out handler                          */
+/* get connection handle                                                      */
+/******************************************************************************/
+MQHCONN getConHanlder()
+{
+  logFuncCall() ;               
+  logFuncExit( );
+  return _ghCon ;
+}
+
+/******************************************************************************/
+/*  back out handler                                                          */
 /******************************************************************************/
 int backoutHandler()
 {
@@ -120,7 +131,6 @@ int backoutHandler()
 
   int sysRc = 0 ;
 
-  MQHCONN hCon ;                         // connection handle   
   char qmgrName[MQ_Q_MGR_NAME_LENGTH+1]; // queue manager name 
                                          //
   MQHOBJ  hBoq ;                         // queue handle   
@@ -151,7 +161,7 @@ int backoutHandler()
           strlen( getStrAttr( "qmgr" ) ));  //
                                             //
   sysRc =  mqConn( (char*) qmgrName,        // queue manager          
-                           &hCon  );        // connection handle            
+                           &_ghCon  );        // connection handle            
                                             //
   switch( sysRc )                           //
   {                                         //
@@ -173,7 +183,7 @@ int backoutHandler()
           getStrAttr("backout")           ,   //
           strlen(getStrAttr("backout")) );    //
                                               //
-  sysRc=mqOpenObject( hCon                  , // connection handle
+  sysRc=mqOpenObject( _ghCon                  , // connection handle
                       &dBoq                 , // queue descriptor
                       MQOO_INPUT_EXCLUSIVE  | // open for exclusive get
                       MQOO_FAIL_IF_QUIESCING, // fail if stopping queue manager
@@ -194,7 +204,7 @@ int backoutHandler()
           getStrAttr("source")          ,     //
           strlen( getStrAttr("source") ) );   //
                                               //
-  sysRc=mqOpenObject( hCon                  , // connection handle
+  sysRc=mqOpenObject( _ghCon                  , // connection handle
                       &dSrcq                , // queue descriptor
                       MQOO_OUTPUT           | // open object for put
                       MQOO_SET_ALL_CONTEXT  | // keep original date/time in MQMD
@@ -216,7 +226,7 @@ int backoutHandler()
           getStrAttr("forward")          ,    //
           strlen( getStrAttr("forward") ) );  //
                                               //
-  sysRc=mqOpenObject( hCon                  , // connection handle
+  sysRc=mqOpenObject( _ghCon                  , // connection handle
                       &dFwdq                , // queue descriptor
                       MQOO_OUTPUT           | // open object for put
                       MQOO_SET_ALL_CONTEXT  | // keep original date/time in MQMD
@@ -234,7 +244,7 @@ int backoutHandler()
   // -------------------------------------------------------
   while( 1 )                                  //
   {                                           //
-    sysRc = moveMessages( hCon ,              // move message back to source
+    sysRc = moveMessages( _ghCon ,              // move message back to source
 			 hBoq  ,              //  queue or forward to goal
 			 hSrcq ,              //  queue
 			 hFwdq);              //
@@ -265,7 +275,7 @@ int backoutHandler()
 }
 
 /******************************************************************************/
-/*   move messages                     */
+/*   move messages                                                            */
 /******************************************************************************/
 int moveMessages( MQHCONN _hCon    ,     // connection handle   
                   MQHOBJ  _hGetQ   ,     // get queue handle
@@ -323,13 +333,13 @@ int moveMessages( MQHCONN _hCon    ,     // connection handle
       sysRc = MQRC_NONE;                  //
       break;                              //
     }                                     //
-    default : 
-    {
-      sysRc = reason ;
-      goto _door;                 //
-    }
+    default :                             //
+    {                                     //
+      sysRc = reason ;                    //
+      goto _door;                         //
+    }                                     //
   }                                       //
-                                            // 
+                                          // 
   // -----------------------------------------------------
   // read the message
   // -----------------------------------------------------
@@ -877,15 +887,15 @@ int readOldestMessage( MQHCONN _hCon       , // connection handle
 /*     the file should be written on the directory path and should have       */
 /*     message id in the name                                                 */
 /*                                                                            */
-/*   attributes:                                                    */
-/*     1. path                                                       */
-/*     2. message descriptor                              */
-/*     3. message buffer                                       */
-/*     4. message length                               */
-/*                                          */
-/*    return type:                                    */
+/*   attributes:                                                              */
+/*     1. path                                                                */
+/*     2. message descriptor                                        */
+/*     3. message buffer                                                 */
+/*     4. message length                                         */
+/*                                                    */
+/*    return type:                                                        */
 /*      void, no return code needed, if writing a file fails, no data will be */
-/*      lost since real message is still on the queue                  */
+/*      lost since real message is still on the queue                         */
 /*                                                                            */
 /******************************************************************************/
 void dumpMsg( const char *path,
@@ -925,7 +935,6 @@ void dumpMsg( const char *path,
                                  getStrAttr("source")   ,
                                  msgId                  );
 
-  printf("%s\n",fileName);
   fp = fopen(fileName,"w");
   if( !fp )
   {
