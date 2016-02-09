@@ -947,7 +947,7 @@ void dumpMsg( const char *path,
   fprintf(fp,F_STR,"Structure version"  ,(char*)mqmdVer2str(md.Version));
   fprintf(fp,F_STR,"Report message options",(char*)mqReportOption2str(md.Report));
   fprintf(fp,F_STR,"Message type"       ,(char*)mqMsgType2str(md.MsgType));  
-  fprintf(fp,F_MQLONG,"Message lifetime",md.Expiry );
+  fprintf(fp,F_MQLONG,"Message lifetime",(int)md.Expiry );
   fprintf(fp,F_STR,"Feedback code"      ,(char*)mqFeedback2str( md.Feedback));
   fprintf(fp,F_STR,"Numeric encoding"   ,(char*) mqEncondig2str(md.Encoding));
   fprintf(fp,F_STR,"Message data CCSID" ,(char*)mqCCSID2str(md.CodedCharSetId));
@@ -957,7 +957,7 @@ void dumpMsg( const char *path,
                    (char*)mqPersistence2str(md.Persistence));
   fprintf(fp,F_MQBYTE24,"Message identifier",msgId);
   fprintf(fp,F_MQBYTE24,"Correlation identifier",corId);
-  fprintf(fp,F_MQLONG,"Backout counter",md.BackoutCount);
+  fprintf(fp,F_MQLONG,"Backout counter",(int)md.BackoutCount);
   fprintf(fp,F_MQCHAR48,"Name of reply queue",md.ReplyToQ);
   fprintf(fp,F_MQCHAR48, "Name of reply qmgr",md.ReplyToQMgr);
   fprintf(fp,F_MQCHAR12,"User identifier",md.UserIdentifier);
@@ -974,10 +974,10 @@ void dumpMsg( const char *path,
   // -------------------------------------------------------
   if( md.Version < MQMD_VERSION_2 ) goto _message ;
   fprintf(fp,F_MQBYTE24,"Group identifier",grpId);
-  fprintf(fp,F_MQLONG,"Logical SeqNr in group",md.MsgSeqNumber);
-  fprintf(fp,F_MQLONG,"Physical offset from logic start", md.Offset);
+  fprintf(fp,F_MQLONG,"Logical SeqNr in group",(int)md.MsgSeqNumber);
+  fprintf(fp,F_MQLONG,"Physical offset from logic start", (int)md.Offset);
   fprintf(fp,F_STR, "Message flags",(char*)mqMsgFlag2str(md.MsgFlags));
-  fprintf(fp,F_MQLONG,"Length of original message",md.OriginalLength);
+  fprintf(fp,F_MQLONG,"Length of original message",(int)md.OriginalLength);
 
   _message:
 
