@@ -26,6 +26,7 @@
 #include "sighnd.h"
 #include <ctl.h>
 #include <msgcat/lgstd.h>
+#include <cmdln.h>
 
 // ---------------------------------------------------------
 // local
