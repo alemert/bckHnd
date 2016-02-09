@@ -256,7 +256,7 @@ PMQBYTE24 findOldestMessage()
   logFuncCall() ;               
 
   int oldestIx = -1 ;                          //
-  time_t oldest = LLONG_MAX ;
+  time_t oldest = (time_t) LLONG_MAX ;
 
   int i;
 
